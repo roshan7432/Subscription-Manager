@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Smart Subscription Manager</title>
+
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<style>
+    body {
+      background: #102542;
+      color: #f3f3f3;
+      min-height: 100vh;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+    .card, .table, .alert, .form-control {
+      background: #19345c !important;
+      color: #f3f3f3 !important;
+      border-radius: 10px;
+      box-shadow: 0 2px 8px rgba(13,110,253,0.10);
+      border: none;
+    }
+    .table-dark th {
+      background-color: #0d2645 !important;
+      color: #fff !important;
+    }
+    .btn-primary, .btn-success, .btn-warning, .btn-danger {
+      border: none;
+    }
+    .btn-primary {
+      background-color: #2264d1 !important;
+      color: #fff !important;
+    }
+    .btn-success {
+      background-color: #1db954 !important;
+      color: #fff !important;
+    }
+    .btn-warning {
+      background-color: #e2ca27 !important;
+      color: #222 !important;
+    }
+    .btn-danger {
+      background-color: #e02745 !important;
+      color: #fff !important;
+    }
+    .form-label {
+      color: #bcd4f6;
+    }
+</style>
+
+
+<body>
+<div class="container mt-4">
+    <h1 class="mb-4 text-center">Smart Subscription Manager</h1>
+
+    <div class="card mb-4">
+        <div class="card-header">Add / Edit Subscription</div>
+        <div class="card-body">
+            <form id="subscriptionForm" class="row g-3 needs-validation" novalidate>
+                <div class="col-md-4">
+                    <label for="name" class="form-label">Name</label>
+                    <input type="text" class="form-control" id="name" required />
+                    <div class="invalid-feedback">Please enter a subscription name.</div>
+                </div>
+                <div class="col-md-4">
+                    <label for="amount" class="form-label">Amount ($)</label>
+                    <input type="number" class="form-control" id="amount" min="0.01" step="0.01" required />
+                    <div class="invalid-feedback">Enter a valid amount greater than zero.</div>
+                </div>
+                <div class="col-md-4">
+                    <label for="billingDate" class="form-label">Billing Date</label>
+                    <input type="date" class="form-control" id="billingDate" required />
+                    <div class="invalid-feedback">Please select a billing date.</div>
+                </div>
+                <div class="col-12">
+                    <button class="btn btn-primary" type="submit">Save</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <h2>Subscriptions</h2>
+    <table class="table table-striped" id="subscriptionsTable">
+        <thead class="table-dark">
+        <tr>
+            <th>Name</th>
+            <th>Amount</th>
+            <th>Billing Date</th>
+            <th>Actions</th>
+        </tr>
+        </thead>
+        <tbody></tbody>
+    </table>
+
+    <h2>Monthly Spending Chart</h2>
+    <canvas id="spendingChart" height="150"></canvas>
+
+    <div class="card mt-4">
+        <div class="card-header">Settings</div>
+        <div class="card-body">
+            <form id="settingsForm" class="row g-3 needs-validation" novalidate>
+                <div class="col-md-4">
+                    <label for="monthlyBudget" class="form-label">Monthly Budget ($)</label>
+                    <input type="number" class="form-control" id="monthlyBudget" min="0" step="0.01" />
+                </div>
+                <div class="col-md-4">
+                    <label for="notificationStart" class="form-label">Notification Quiet Start (HH:mm)</label>
+                    <input type="time" class="form-control" id="notificationStart" />
+                </div>
+                <div class="col-md-4">
+                    <label for="notificationEnd" class="form-label">Notification Quiet End (HH:mm)</label>
+                    <input type="time" class="form-control" id="notificationEnd" />
+                </div>
+                <div class="col-12">
+                    <button type="submit" class="btn btn-primary">Save Settings</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="mt-4">
+        <h2>Export / Import</h2>
+        <button id="exportBtn" class="btn btn-success mb-3">Export as CSV</button>
+        <br />
+        <label for="importFile" class="form-label">Import CSV:</label>
+        <input type="file" id="importFile" accept=".csv" class="form-control" />
+    </div>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+<script>
+    // Bootstrap validation helper
+    (() => {
+      'use strict';
+      const forms = document.querySelectorAll('.needs-validation');
+      Array.from(forms).forEach(form => {
+        form.addEventListener('submit', event => {
+          if (!form.checkValidity()) {
+            event.preventDefault();
+            event.stopPropagation();
+          }
+          form.classList.add('was-validated');
+        }, false);
+      });
+    })();
+
+    // Fetch and render functions
+    async function loadSubscriptions() {
+      const tbody = document.querySelector('#subscriptionsTable tbody');
+      tbody.innerHTML = '';
+      const response = await fetch('/api/subscriptions');
+      const data = await response.json();
+      data.forEach(s => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${s.name}</td>
+          <td>${s.amount.toFixed(2)}</td>
+          <td>${s.billingDate}</td>
+          <td>
+            <button type="button" class="btn btn-sm btn-warning me-2 edit-btn">Edit</button>
+            <button type="button" class="btn btn-sm btn-danger delete-btn">Delete</button>
+          </td>
+        `;
+        tr.querySelector('.edit-btn').onclick = () => {
+          document.getElementById('name').value = s.name;
+          document.getElementById('amount').value = s.amount;
+          document.getElementById('billingDate').value = s.billingDate;
+          document.getElementById('subscriptionForm').setAttribute('data-edit-id', s.id);
+          window.scrollTo({top: 0, behavior: 'smooth'});
+        };
+        tr.querySelector('.delete-btn').onclick = async () => {
+          if(confirm(`Delete subscription "${s.name}"?`)) {
+            await fetch('/api/subscriptions/' + s.id, { method: 'DELETE' });
+            triggerAllLoads();
+          }
+        };
+        tbody.appendChild(tr);
+      });
+    }
+
+    async function loadMonthlyChart() {
+      const res = await fetch('/api/subscriptions/analytics/monthly');
+      const data = await res.json();
+      const monthNames = [ "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" ];
+      const labels = [];
+      const values = [];
+      for(const m in data) {
+        labels.push(monthNames[m-1]);
+        values.push(data[m]);
+      }
+      const ctx = document.getElementById('spendingChart').getContext('2d');
+      if(window.spendingChartInstance) {
+        window.spendingChartInstance.data.labels = labels;
+        window.spendingChartInstance.data.datasets[0].data = values;
+        window.spendingChartInstance.update();
+      } else {
+        window.spendingChartInstance = new Chart(ctx, {
+          type: 'bar',
+          data: {
+            labels: labels,
+            datasets: [{
+              label: 'Total spending',
+              data: values,
+              backgroundColor: 'rgba(13, 110, 253, 0.5)',
+              borderColor: 'rgba(13, 110, 253, 1)',
+              borderWidth: 1
+            }]
+          },
+          options: {
+            scales: {
+              y: { beginAtZero: true }
+            }
+          }
+        });
+      }
+    }
+
+    async function checkUpcomingPayments() {
+      const res = await fetch('/api/subscriptions/notifications/upcoming?daysAhead=7');
+      const upcoming = await res.json();
+      if(upcoming.length > 0) {
+        const names = upcoming.map(s => s.name + " on " + s.billingDate).join(', ');
+        if (!document.getElementById('upcomingAlert')) {
+          const alertDiv = document.createElement('div');
+          alertDiv.id = 'upcomingAlert';
+          alertDiv.className = 'alert alert-warning mt-3';
+          alertDiv.textContent = `Upcoming subscription payments within 7 days: ${names}`;
+          document.querySelector('.container').insertBefore(alertDiv, document.querySelector('.container').firstChild.nextSibling);
+        }
+      } else {
+        const alertDiv = document.getElementById('upcomingAlert');
+        if(alertDiv) alertDiv.remove();
+      }
+    }
+
+    async function loadSettings() {
+      const res = await fetch('/api/settings');
+      if (res.status === 200) {
+        const settings = await res.json();
+        document.getElementById('monthlyBudget').value = settings.monthlyBudget || '';
+        document.getElementById('notificationStart').value = settings.notificationStart || '';
+        document.getElementById('notificationEnd').value = settings.notificationEnd || '';
+      }
+    }
+
+    document.getElementById('subscriptionForm').addEventListener('submit', async function(e) {
+      e.preventDefault();
+      if (!this.checkValidity()) return;
+
+      const subscription = {
+        name: document.getElementById('name').value.trim(),
+        amount: parseFloat(document.getElementById('amount').value),
+        billingDate: document.getElementById('billingDate').value
+      };
+      const editId = document.getElementById('subscriptionForm').getAttribute('data-edit-id');
+      if (editId) {
+        await fetch('/api/subscriptions/' + editId, {
+          method: 'PUT',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(subscription)
+        });
+        document.getElementById('subscriptionForm').removeAttribute('data-edit-id');
+      } else {
+        await fetch('/api/subscriptions', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(subscription)
+        });
+      }
+      this.reset();
+      this.classList.remove('was-validated');
+      triggerAllLoads();
+    });
+
+    document.getElementById('settingsForm').addEventListener('submit', async function(e) {
+      e.preventDefault();
+      const settings = {
+        monthlyBudget: parseFloat(document.getElementById('monthlyBudget').value),
+        notificationStart: document.getElementById('notificationStart').value,
+        notificationEnd: document.getElementById('notificationEnd').value
+      };
+      await fetch('/api/settings', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(settings)
+      });
+      alert('Settings saved!');
+    });
+
+    document.getElementById('exportBtn').addEventListener('click', () => {
+      window.location.href = '/api/subscriptions/export/csv';
+    });
+
+    document.getElementById('importFile').addEventListener('change', async function() {
+      const file = this.files[0];
+      if (!file) return;
+      const text = await file.text();
+
+      const lines = text.trim().split('\n').slice(1);
+
+      for (const line of lines) {
+        const [name, amount, billingDate] = line.split(',');
+        if (name && amount && billingDate) {
+          await fetch('/api/subscriptions', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({name: name.trim(), amount: parseFloat(amount.trim()), billingDate: billingDate.trim()})
+          });
+        }
+      }
+      alert('Import completed');
+      triggerAllLoads();
+    });
+
+    function triggerAllLoads() {
+      loadSubscriptions();
+      loadMonthlyChart();
+      checkUpcomingPayments();
+      loadSettings();
+    }
+
+    window.onload = () => {
+      triggerAllLoads();
+      setInterval(checkUpcomingPayments, 24 * 60 * 60 * 1000);
+    };
+</script>
+</body>
+</html>
